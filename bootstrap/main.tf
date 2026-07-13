@@ -11,6 +11,7 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+  profile = "documind"
 }
 
 resource "aws_s3_bucket" "terraform_state" {
@@ -40,7 +41,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 }
 
 resource "aws_s3_bucket_public_access_block" "terraform_state" {
-  bucket = aws_s3_bucket.terraform_state
+  bucket = aws_s3_bucket.terraform_state.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -51,10 +52,10 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
 resource "aws_dynamodb_table" "terraform_state" {
   name         = var.lock_table_name
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LOCKID"
+  hash_key     = "LockID"
 
   attribute {
-    name = "LOCKID"
+    name = "LockID"
     type = "S"
   }
 }

@@ -42,3 +42,23 @@ output "documents_bucket_name" {
   description = "S3 bucket name for receipt uploads"
   value       = module.s3.bucket_name
 }
+
+output "github_actions_role_arn" {
+  description = "ARN of the GitHub Actions IAM role - used in workflow files"
+  value       = module.irsa.github_actions_role_arn
+}
+
+output "backend_role_arn" {
+  description = "ARN of the backend IRSA role - annotated on the K8s service account"
+  value       = module.irsa.backend_role_arn
+}
+
+output "frontend_ecr_url" {
+  description = "ECR repository URL for the frontend image"
+  value       = module.irsa.frontend_ecr_url
+}
+
+output "backend_ecr_url" {
+  description = "ECR repository URL for the backend image"
+  value       = module.irsa.backend_ecr_url
+}

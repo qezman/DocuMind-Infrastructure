@@ -1,26 +1,4 @@
-terraform {
-  required_version = ">= 1.5.0"
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region  = var.aws_region
-  profile = "documind"
-
-  default_tags {
-    tags = {
-      Project     = var.project
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
-  }
-}
 
 data "aws_caller_identity" "current" {}
 
@@ -64,10 +42,21 @@ module "s3" {
 module "irsa" {
   source = "../../modules/irsa"
 
-  project = var.project
-  environment = var.environment
-  aws_account_id = data.aws_caller_identity.current.account_id
+  project              = var.project
+  environment          = var.environment
+  aws_account_id       = data.aws_caller_identity.current.account_id
+  oidc_provider_arn    = module.eks.oidc_provider_arn
+  oidc_provider_url    = module.eks.oidc_provider_url
+  documents_bucket_arn = module.s3.bucket_arn
+}
+
+
+module "external_secrets" {
+  source            = "../../modules/external-secrets"
+  project           = var.project
+  environment       = var.environment
   oidc_provider_arn = module.eks.oidc_provider_arn
   oidc_provider_url = module.eks.oidc_provider_url
-  documents_bucket_arn = module.s3.bucket_arn
+  database_url      = var.database_url
+  jwt_secret        = var.jwt_secret
 }

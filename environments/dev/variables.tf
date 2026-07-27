@@ -39,3 +39,15 @@ variable "db_username" {
   type        = string
   default     = "documind_admin"
 }
+
+variable "database_url" {
+  description = "Backend Database_URL for Secrets Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_secret" {
+  description = "Backend JWT_SECRET for Secrets Manager"
+  type        = string
+  sensitive   = true
+}

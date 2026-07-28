@@ -17,3 +17,7 @@ output "backend_ecr_url" {
   description = "ECR repository URL for the backend image"
   value       = aws_ecr_repository.backend.repository_url
 }
+
+output "lb_controller_role_arn" {
+  value = aws_iam_role.lb_controller.arn
+}

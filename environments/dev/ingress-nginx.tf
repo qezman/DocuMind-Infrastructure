@@ -1,4 +1,3 @@
-# nginx-ingress
 resource "helm_release" "ingress_nginx" {
   name       = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -11,15 +10,39 @@ resource "helm_release" "ingress_nginx" {
     value = "LoadBalancer"
   }
 
+  # modern controller: NLB type via this key
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
+    value = "external"
+  }
 
-set {
-  name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
-  value = "nlb"
-}
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-nlb-target-type"
+    value = "ip"
+  }
 
-  # Don't wait for rollout
-  wait    = false
-  timeout = 600
+  # attach the ACM cert for TLS termination at the NLB
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-cert"
+    value = module.dns.certificate_arn
+  }
 
-  depends_on = [kubernetes_namespace.ingress_nginx]
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-ports"
+    value = "https"
+  }
+
+  set {
+    name  = "controller.service.targetPorts.https"
+    value = "http"
+  }
+
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
+    value = "internet-facing"
+  }
+
+  wait       = false
+  timeout    = 600
+  depends_on = [kubernetes_namespace.ingress_nginx, module.dns, helm_release.lb_controller]
 }

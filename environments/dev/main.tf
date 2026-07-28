@@ -60,3 +60,8 @@ module "external_secrets" {
   database_url      = var.database_url
   jwt_secret        = var.jwt_secret
 }
+
+module "dns" {
+  source              = "../../modules/dns"
+  ingress_lb_hostname = "k8s-ingressn-ingressn-bb40cc08a5-e5eb29777d7023c4.elb.us-east-1.amazonaws.com"
+}

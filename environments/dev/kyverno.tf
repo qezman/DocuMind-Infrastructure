@@ -5,14 +5,12 @@ resource "kubernetes_namespace" "kyverno" {
 }
 
 resource "helm_release" "kyverno" {
-  name = "kyverno"
-  #   repository = "https://kyverno.github.io/kyverno"
+  name       = "kyverno"
+  repository = "https://kyverno.github.io/kyverno"
+  chart      = "kyverno"
+  namespace  = kubernetes_namespace.kyverno.metadata[0].name
+  version    = "3.2.6"
 
-  # chart pulled from local cache, not repo - helm repo add fails against
-# github.io-hosted chart repos in this environment
-  chart     = "/home/qossim_05/.cache/helm/repository/kyverno-3.2.6.tgz"
-  namespace = kubernetes_namespace.kyverno.metadata[0].name
-  #   version    = "3.2.6"
   set {
     name  = "replicaCount"
     value = "1"
@@ -30,11 +28,6 @@ resource "helm_release" "kyverno" {
 
   set {
     name  = "cleanupController.enabled"
-    value = "false"
-  }
-
-  set {
-    name  = "reportsController.enabled"
     value = "false"
   }
 
@@ -63,7 +56,17 @@ resource "helm_release" "kyverno" {
     value = "false"
   }
 
+  set {
+    name  = "cleanupJobs.reports.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "reportsController.enabled"
+    value = "true"
+  }
+
   wait       = false
-  timeout    = 600
+  timeout    = 900
   depends_on = [kubernetes_namespace.kyverno]
 }

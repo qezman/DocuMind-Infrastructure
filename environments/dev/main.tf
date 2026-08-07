@@ -63,5 +63,5 @@ module "external_secrets" {
 
 module "dns" {
   source              = "../../modules/dns"
-  ingress_lb_hostname = "k8s-ingressn-ingressn-bb40cc08a5-e5eb29777d7023c4.elb.us-east-1.amazonaws.com"
+  ingress_lb_hostname = "k8s-ingressn-ingressn-e6b21d5526-4e531922e68c3eba.elb.us-east-1.amazonaws.com"
 }

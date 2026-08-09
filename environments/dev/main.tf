@@ -65,3 +65,9 @@ module "dns" {
   source              = "../../modules/dns"
   ingress_lb_hostname = "k8s-ingressn-ingressn-e6b21d5526-4e531922e68c3eba.elb.us-east-1.amazonaws.com"
 }
+
+resource "aws_eks_addon" "ebs_csi_driver" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = module.irsa.ebs_csi_driver_role_arn
+}

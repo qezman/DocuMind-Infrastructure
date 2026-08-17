@@ -59,11 +59,12 @@ module "external_secrets" {
   oidc_provider_url = module.eks.oidc_provider_url
   database_url      = var.database_url
   jwt_secret        = var.jwt_secret
+  gemini_api_key    = var.gemini_api_key
 }
 
 module "dns" {
   source              = "../../modules/dns"
-  ingress_lb_hostname = "k8s-ingressn-ingressn-e6b21d5526-4e531922e68c3eba.elb.us-east-1.amazonaws.com"
+  ingress_lb_hostname = "k8s-ingressn-ingressn-bfc0403c1f-d693cceaae0e0419.elb.us-east-1.amazonaws.com"
 }
 
 resource "aws_eks_addon" "ebs_csi_driver" {

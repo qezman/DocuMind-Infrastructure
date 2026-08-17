@@ -52,6 +52,12 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
+variable "gemini_api_key" {
+  description = "Gemini API key for Secrets Manager (backend RAG + documind-agent)"
+  type        = string
+  sensitive   = true
+}
+
 variable "grafana_password" {
   description = "Grafana admin password"
   type        = string

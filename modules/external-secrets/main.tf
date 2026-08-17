@@ -1,7 +1,10 @@
 # AWS Secrets Manager secret storing backend credentials
 resource "aws_secretsmanager_secret" "backend" {
   name        = "${var.project}-${var.environment}-backend-secrets"
-  description = "DocuMind backend DATABASE_URL and JWT_SECRET"
+  description = "DocuMind backend DATABASE_URL, JWT_SECRET, and GEMINI_API_KEY"
+
+  # no expiration
+  recovery_window_in_days = 0
 
   tags = {
     Name = "${var.project}-${var.environment}-backend-secrets"
@@ -12,8 +15,9 @@ resource "aws_secretsmanager_secret_version" "backend" {
   secret_id = aws_secretsmanager_secret.backend.id
 
   secret_string = jsonencode({
-    DATABASE_URL = var.database_url
-    JWT_SECRET   = var.jwt_secret
+    DATABASE_URL   = var.database_url
+    JWT_SECRET     = var.jwt_secret
+    GEMINI_API_KEY = var.gemini_api_key
   })
 }
 

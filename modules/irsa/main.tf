@@ -105,7 +105,7 @@ resource "aws_iam_role" "github_actions" {
           StringLike = {
             # The wildcard covers all branches and all workflow triggers
             # qezman/documind-frontend:*, qezman/documind-backend:*, etc.
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/documind-*:*"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/documind-*"
           }
         }
       }

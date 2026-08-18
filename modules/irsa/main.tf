@@ -103,9 +103,10 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            # The wildcard covers all branches and all workflow triggers
-            # qezman/documind-frontend:*, qezman/documind-backend:*, etc.
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/documind-*"
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:${var.github_org}/documind-*:*",     # legacy sub format (backend, frontend)
+              "repo:${var.github_org}@*/documind-*@*:*", # immutable-ID sub format (agent, and future repos)
+            ]
           }
         }
       }
@@ -152,7 +153,8 @@ resource "aws_iam_role_policy" "github_actions" {
         ]
         Resource = [
           aws_ecr_repository.frontend.arn,
-          aws_ecr_repository.backend.arn
+          aws_ecr_repository.backend.arn,
+          aws_ecr_repository.agent.arn
         ]
       }
     ]
@@ -215,6 +217,40 @@ resource "aws_iam_role_policy" "backend" {
           var.documents_bucket_arn,
           "${var.documents_bucket_arn}/*"
         ]
+      }
+    ]
+  })
+}
+
+# Agent img repo
+resource "aws_ecr_repository" "agent" {
+  name                 = "${var.project}-agent"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "${var.project}-agent"
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "agent" {
+  repository = aws_ecr_repository.agent.name
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
       }
     ]
   })

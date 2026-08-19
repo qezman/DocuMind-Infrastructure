@@ -63,3 +63,15 @@ variable "grafana_password" {
   type        = string
   sensitive   = true
 }
+
+variable "node_desired_size" {
+  description = "Desired number of EKS worker nodes"
+  type        = number
+  default     = 5
+}
+
+variable "node_max_size" {
+  description = "Maximum number of EKS worker nodes"
+  type        = number
+  default     = 5
+}

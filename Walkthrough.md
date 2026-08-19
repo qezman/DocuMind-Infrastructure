@@ -1,5 +1,10 @@
 # DocuMind - EKS Platform Walkthrough
 
+A step-by-step build order for standing up DocuMind end to end. For the
+debugging history and known gotchas behind specific steps, see
+[`GOTCHAS.md`](./GOTCHAS.md) - this doc stays to "what to run, what to
+expect."
+
 ---
 
 ## Overview & Architecture
@@ -26,16 +31,14 @@ CI/CD, and a standalone AI diagnostic agent.
 
 ---
 
-
-
 ## Prerequisites
 
 - AWS account with a dedicated IAM user (`documind-deployer`, `AdministratorAccess`
-for this sandbox account)
+  for this sandbox account)
 - Domain you control, able to change nameservers
 - `terraform` >= 1.6, `kubectl`, `helm` >= 3.16, `docker`, `aws` CLI, `pnpm` (via corepack)
 - GitHub repos created: `documind-infra`, `documind-gitops`, `documind-backend`,
-`documind-frontend`, `documind-agent`
+  `documind-frontend`, `documind-agent`
 
 ```bash
 aws configure --profile documind
@@ -44,11 +47,7 @@ aws sts get-caller-identity --profile documind
 
 ---
 
-
-
 ## Phase 1 - Infrastructure (Terraform)
-
-
 
 ### 1a. Remote state bootstrap
 
@@ -57,11 +56,6 @@ cd documind-infra/bootstrap
 terraform init
 terraform apply -var="state_bucket_name=documind-terraform-state-<account-id>"
 ```
-
-`bootstrap/` should only ever contain the S3 state bucket - it runs before  
-the EKS cluster exists, so it has no cluster to talk to.
-
-
 
 ### 1b. Backend + providers (root module)
 
@@ -89,13 +83,14 @@ static tokens expire mid-apply on long-running Helm installs.
 export TF_VAR_db_password="..."
 export TF_VAR_database_url="placeholder"
 export TF_VAR_jwt_secret="placeholder"
+export TF_VAR_gemini_api_key="placeholder"   # real value needed by Phase 10
 
 terraform apply -target=module.vpc -target=module.eks -target=module.rds \
   -target=module.s3 -target=module.irsa
 ```
 
 - VPC: 2 public + 2 private subnets, NAT Gateway, correctly tagged for EKS
-(`kubernetes.io/role/elb` / `internal-elb`)
+  (`kubernetes.io/role/elb` / `internal-elb`)
 - EKS: separate IAM roles for control plane vs. node group
 - RDS: security group restricted to EKS node SG only, never public
 - S3: private, presigned-URL access only
@@ -111,11 +106,7 @@ kubectl get nodes
 
 ---
 
-
-
 ## Phase 2 - GitOps (ArgoCD)
-
-
 
 ### 2a. Install ArgoCD + ingress-nginx (via Terraform/Helm)
 
@@ -123,8 +114,6 @@ kubectl get nodes
 terraform apply -target=helm_release.argocd -target=helm_release.ingress_nginx
 kubectl get pods -n argocd -n ingress-nginx
 ```
-
-
 
 ### 2b. `documind-gitops` repo structure
 
@@ -150,7 +139,12 @@ kind: Application
 metadata: { name: documind-backend, namespace: argocd }
 spec:
   project: default
-  source: { repoURL: https://github.com/qezman/documind-gitops.git, targetRevision: main, path: manifests/backend }
+  source:
+    {
+      repoURL: https://github.com/qezman/documind-gitops.git,
+      targetRevision: main,
+      path: manifests/backend,
+    }
   destination: { server: https://kubernetes.default.svc, namespace: documind }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
@@ -164,16 +158,45 @@ kubectl apply -f apps/frontend.yaml
 kubectl get application -n argocd
 ```
 
+Hold off on `apps/cluster.yaml` and `apps/agent.yaml` until Phase 9 and
+Phase 11 respectively - see `GOTCHAS.md`.
+
 `[SCREENSHOT - ArgoCD dashboard, Applications Synced/Healthy]`
 `[SCREENSHOT - ArgoCD resource tree for documind-backend]`
 
+### 2d. Database migrations
+
+RDS has no schema on a fresh apply. Run once a `documind-backend` pod is
+`Running` (it already has `DATABASE_URL` injected) - copy the two SQL
+files in and run them through the pod's own `pg` dependency, no local
+network path to RDS needed (it's private, EKS-node-only):
+
+```bash
+kubectl cp documind-backend/prisma/000_users.sql documind/<backend-pod>:/tmp/000_users.sql
+kubectl cp documind-backend/prisma/001_documind.sql documind/<backend-pod>:/tmp/001_documind.sql
+
+kubectl exec -n documind <backend-pod> -- node -e "
+const { Pool } = require('pg');
+const fs = require('fs');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+(async () => {
+  const client = await pool.connect();
+  for (const f of ['/tmp/000_users.sql', '/tmp/001_documind.sql']) {
+    console.log('Running', f);
+    await client.query(fs.readFileSync(f, 'utf8'));
+  }
+  console.log('done');
+  client.release();
+  process.exit(0);
+})().catch(e => { console.error(e); process.exit(1); });
+"
+```
+
+`[SCREENSHOT - signup working on the live app]`
+
 ---
 
-
-
 ## Phase 3 - CI/CD Pipeline
-
-
 
 ### 3a. GitHub OIDC provider + role (Terraform)
 
@@ -198,11 +221,6 @@ resource "aws_iam_role" "github_actions" {
   })
 }
 ```
-
-> `StringLike` is case-sensitive - repo names and the policy pattern must
-> match casing exactly.
-
-
 
 ### 3b. Workflow (`.github/workflows/deploy.yml`, each app repo)
 
@@ -239,11 +257,7 @@ Push to `main` → build → ECR → gitops patch → ArgoCD sync → Rollout ca
 
 ---
 
-
-
 ## Phase 4 - DNS + TLS (Route53 + ACM)
-
-
 
 ### 4a. Hosted zone + nameservers
 
@@ -259,8 +273,6 @@ resource "aws_acm_certificate" "app" {
 }
 # + validation record + aws_acm_certificate_validation
 ```
-
-
 
 ### 4c. AWS Load Balancer Controller
 
@@ -293,8 +305,6 @@ set { name = "...aws-load-balancer-ssl-ports"; value = "https" }
 set { name = "controller.service.targetPorts.https"; value = "http" }
 ```
 
-
-
 ### 4d. Point DNS at the NLB
 
 ```bash
@@ -308,11 +318,7 @@ curl -vI https://documind.qossim005.online/
 
 ---
 
-
-
 ## Phase 5 - Observability
-
-
 
 ### 5a. Prometheus + Grafana + Alertmanager
 
@@ -322,8 +328,6 @@ resource "helm_release" "kube_prometheus_stack" {
   set { name = "grafana.adminPassword"; value = var.grafana_password }
 }
 ```
-
-
 
 ### 5b. Custom alert rule
 
@@ -335,7 +339,7 @@ metadata:
   name: documind-backend-alerts
   namespace: monitoring
   labels:
-    release: kube-prometheus-stack   # required or the Operator ignores it
+    release: kube-prometheus-stack # required or the Operator ignores it
 spec:
   groups:
     - name: documind-backend
@@ -354,11 +358,7 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 ---
 
-
-
 ## Phase 6 - Log Aggregation (Loki + Promtail)
-
-
 
 ### 6a. EBS CSI driver (required first - Loki needs a PVC)
 
@@ -369,8 +369,6 @@ resource "aws_eks_addon" "ebs_csi_driver" {
   service_account_role_arn = module.irsa.ebs_csi_driver_role_arn
 }
 ```
-
-
 
 ### 6b. Loki (single-binary mode) + Promtail
 
@@ -394,11 +392,7 @@ kubectl get pods -n loki
 
 ---
 
-
-
-## Phase 7 - Teardown & Redeployment Guide
-
-
+## Phase 7 - Teardown & Redeployment
 
 ### Teardown
 
@@ -431,25 +425,37 @@ aws rds describe-db-instances --profile documind --query "DBInstances[].DBInstan
 aws ec2 describe-nat-gateways --profile documind --filter "Name=state,Values=available"
 ```
 
-
-
 ### Redeployment
 
-Re-run Phases 1–6 in order. On a rebuilt cluster:
+The real order, not just "re-run the phases" - see `GOTCHAS.md` for why
+each step is ordered this way:
 
-- `aws eks update-kubeconfig` again - the API endpoint hostname changes
-- Reapply manual K8s manifests if ArgoCD Applications aren't yet pointing
-at them (namespace → serviceaccount → secretstore → externalsecret →
-rollout → ingress)
-- Update `module.dns`'s NLB hostname to the new one
-- Reinstall the AWS Load Balancer Controller and confirm `internet-facing`
-scheme (defaults to `internal`)
+1. Phase 1 (bootstrap → VPC/EKS/RDS/S3/IRSA), then `aws eks
+update-kubeconfig` again.
+2. Apply **all** platform Helm releases together, before any ArgoCD
+   `Application`:
+   ```bash
+   terraform apply \
+     -target=helm_release.ingress_nginx \
+     -target=helm_release.argocd \
+     -target=helm_release.argo_rollouts \
+     -target=helm_release.external_secrets \
+     -target=helm_release.kube_prometheus_stack
+   kubectl apply -f documind-gitops/apps/backend.yaml
+   kubectl apply -f documind-gitops/apps/frontend.yaml
+   ```
+3. Trigger CI/CD on `documind-backend` and `documind-frontend` to
+   populate the (freshly empty) ECR repos:
+   ```bash
+   git commit --allow-empty -m "chore: redeploy" && git push origin main
+   ```
+4. Update `module.dns`'s `ingress_lb_hostname` to the new NLB and
+   `terraform apply -target=module.dns` last.
+5. Continue with Phases 8-11 as written.
 
 `[SCREENSHOT - clean terraform destroy output]`
 
 ---
-
-
 
 ## Phase 8 - Progressive Delivery (Argo Rollouts)
 
@@ -482,16 +488,11 @@ kubectl get rollout documind-backend -n documind -w
 
 ---
 
-
-
 ## Phase 9 - Policy Enforcement (Kyverno)
 
 ```bash
 helm repo add kyverno https://kyverno.github.io/kyverno && helm repo update
 ```
-
-> If `helm repo add` fails against GitHub Pages-hosted repos with a TLS/HTTP
-> `EOF` error on Helm 3.21.0, downgrade to Helm 3.16.4.
 
 ```hcl
 resource "helm_release" "kyverno" {
@@ -511,7 +512,8 @@ spec:
     - name: check-runasnonroot
       match: { any: [{ resources: { kinds: ["Pod"] } }] }
       validate:
-        pattern: { spec: { "=(securityContext)": { "=(runAsNonRoot)": "true" } } }
+        pattern:
+          { spec: { "=(securityContext)": { "=(runAsNonRoot)": "true" } } }
 ```
 
 ```bash
@@ -520,17 +522,19 @@ kubectl apply -f manifests/cluster/policy-restrict-registries.yaml
 kubectl get clusterpolicy
 ```
 
+Once Kyverno's running, sync the cluster-policy ArgoCD app too:
+
+```bash
+kubectl apply -f documind-gitops/apps/cluster.yaml
+```
+
 `[SCREENSHOT - kubectl get clusterpolicy, both Ready]`
 
 ---
 
-
-
 ## Phase 10 - Secrets Migration (External Secrets Operator)
 
-
-
-### 10a. Install + IRSA role
+### 10a. Install + IRSA role + AWS secret
 
 ```hcl
 resource "helm_release" "external_secrets" {
@@ -538,7 +542,11 @@ resource "helm_release" "external_secrets" {
 }
 ```
 
-
+`modules/external-secrets` also creates the AWS Secrets Manager secret
+(`aws_secretsmanager_secret.backend` / `_version.backend`) that 10b's
+`ExternalSecret` pulls from, and the IAM policy letting the ESO role read
+it, from `TF_VAR_database_url`, `TF_VAR_jwt_secret`, and
+`TF_VAR_gemini_api_key`.
 
 ### 10b. `ClusterSecretStore` + `ExternalSecret`
 
@@ -553,7 +561,8 @@ spec:
       region: us-east-1
       auth:
         jwt:
-          serviceAccountRef: { name: external-secrets, namespace: external-secrets }
+          serviceAccountRef:
+            { name: external-secrets, namespace: external-secrets }
 ```
 
 ```yaml
@@ -583,8 +592,6 @@ kubectl get secret documind-backend-secrets -n documind
 
 ---
 
-
-
 ## Phase 11 - The AI Diagnostic Agent (`documind-agent`)
 
 Standalone service. Gemini function-calling decides which real, read-only
@@ -602,18 +609,25 @@ rules:
     verbs: ["get", "list"]
 ```
 
+### 11b. Build + deploy (CI, same pattern as backend/frontend)
 
-
-### 11b. Build + deploy
+`documind-agent` is internal-only (`ClusterIP`, no `Ingress`, single
+replica), so it deploys as a plain `Deployment` - no Argo Rollouts canary,
+that's only for backend/frontend's user-facing traffic.
 
 ```bash
 aws ecr create-repository --profile documind --repository-name documind-agent
-docker build -t documind-agent .
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/documind-agent:latest
-kubectl apply -f apps/agent.yaml
 ```
 
+`.github/workflows/deploy.yml` mirrors backend/frontend exactly: OIDC
+auth via `documind-dev-github-actions-role`, build + push tagged by
+commit SHA, then auto-patch the tag into
+`manifests/agent/deployment.yaml` and commit to `documind-gitops`. Push
+to `main` to trigger it, then:
 
+```bash
+kubectl apply -f apps/agent.yaml
+```
 
 ### 11c. Test
 
@@ -622,10 +636,6 @@ kubectl port-forward -n documind svc/documind-agent 3003:3003
 curl -X POST http://localhost:3003/diagnose -H "Content-Type: application/json" \
   -d '{"question": "are all the documind pods healthy right now?"}'
 ```
-
-> Gemini model naming shifts over time - verify current model availability
-> with a direct `curl` to `generateContent` before assuming a model name is
-> still valid.
 
 `[SCREENSHOT - agent diagnosing a real issue]`
 `[SCREENSHOT - kubectl get pods -n documind, agent Running with scoped RBAC]`

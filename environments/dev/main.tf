@@ -19,6 +19,8 @@ module "eks" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   public_subnet_ids  = module.vpc.public_subnet_ids
+  node_desired_size  = var.node_desired_size
+  node_max_size      = var.node_max_size
 }
 
 module "rds" {
@@ -65,10 +67,4 @@ module "external_secrets" {
 module "dns" {
   source              = "../../modules/dns"
   ingress_lb_hostname = "k8s-ingressn-ingressn-bfc0403c1f-d693cceaae0e0419.elb.us-east-1.amazonaws.com"
-}
-
-resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  service_account_role_arn = module.irsa.ebs_csi_driver_role_arn
 }

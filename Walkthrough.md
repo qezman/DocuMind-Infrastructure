@@ -261,8 +261,7 @@ Push to `main` → build → ECR → gitops patch → ArgoCD sync → Rollout ca
 
 ### 4a. Hosted zone + nameservers
 
-Create the Route53 hosted zone, point your registrar's nameservers at the
-4 AWS-assigned ones.
+Create the Route53 hosted zone, point your registrar's nameservers at the 4 AWS-assigned ones.
 
 ### 4b. ACM certificate (DNS-validated)
 
@@ -594,8 +593,7 @@ kubectl get secret documind-backend-secrets -n documind
 
 ## Phase 11 - The AI Diagnostic Agent (`documind-agent`)
 
-Standalone service. Gemini function-calling decides which real, read-only
-`kubectl`/Loki tools to call for a given question.
+Standalone service. Gemini function-calling decides which real, read-only `kubectl`/Loki tools to call for a given question.
 
 ### 11a. RBAC (dedicated, read-only)
 
@@ -612,8 +610,7 @@ rules:
 ### 11b. Build + deploy (CI, same pattern as backend/frontend)
 
 `documind-agent` is internal-only (`ClusterIP`, no `Ingress`, single
-replica), so it deploys as a plain `Deployment` - no Argo Rollouts canary,
-that's only for backend/frontend's user-facing traffic.
+replica), so it deploys as a plain `Deployment` - no Argo Rollouts canary, that's only for backend/frontend's user-facing traffic.
 
 ```bash
 aws ecr create-repository --profile documind --repository-name documind-agent

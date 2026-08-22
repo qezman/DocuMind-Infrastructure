@@ -4,3 +4,5 @@
 *.tfvars
 crash.log
 .terraform.lock.hcl
+
+NOTES.md

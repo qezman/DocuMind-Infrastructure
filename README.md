@@ -11,8 +11,6 @@ Terraform-managed AWS resources, GitOps-driven deployments, progressive delivery
 observability, policy enforcement, and a genuinely working CI/CD pipeline -
 plus a from-scratch agentic AI feature that uses that infrastructure.
 
-
-
 ---
 
 
@@ -22,11 +20,11 @@ plus a from-scratch agentic AI feature that uses that infrastructure.
 
 | Repo                                                               | Purpose                                                              |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `[documind-infra](https://github.com/qezman/documind-infra)`       | Terraform - all AWS infrastructure                                   |
-| `[documind-gitops](https://github.com/qezman/documind-gitops)`     | Kubernetes manifests + ArgoCD Applications                           |
-| `[documind-backend](https://github.com/qezman/documind-backend)`   | Fastify API - auth, document upload, RAG chat                        |
-| `[documind-frontend](https://github.com/qezman/documind-frontend)` | React/Vite frontend                                                  |
-| `[documind-agent](https://github.com/qezman/documind-agent)`       | AI diagnostic agent - read-only Kubernetes troubleshooting assistant |
+| [documind-infra](https://github.com/qezman/documind-infra)       | Terraform - all AWS infrastructure                                   |
+| [documind-gitops](https://github.com/qezman/documind-gitops)     | Kubernetes manifests + ArgoCD Applications                           |
+| [documind-backend](https://github.com/qezman/documind-backend)   | Fastify API - auth, document upload, RAG chat                        |
+| [documind-frontend](https://github.com/qezman/documind-frontend) | React/Vite frontend                                                  |
+| [documind-agent](https://github.com/qezman/documind-agent)       | AI diagnostic agent - read-only Kubernetes troubleshooting assistant |
 
 
 ---
@@ -105,21 +103,34 @@ grounded diagnosis - not a canned response. During development, it correctly
 diagnosed a real cluster issue (pod scheduling failure due to per-node pod
 capacity) on its first meaningful test.
 
-See `documind-agent`['s README](https://github.com/qezman/documind-agent) and
-`[WALKTHROUGH.md](./WALKTHROUGH.md)` for more detail and screenshots.
+See [documind-agent's README](https://github.com/qezman/documind-agent) and
+[Walkthrough.md](./Walkthrough.md) for more detail and screenshots.
 
 ---
 
 
 
+## Design Decisions & Tradeoffs
+
+- **Loki, single-binary mode** - one pod, one PVC, simple to run. At real log volume you'd move to distributed mode with S3-backed storage instead.
+- **One IAM role per component (IRSA)** - backend, External Secrets, LB Controller, EBS CSI, and GitHub Actions each get their own scoped role. More roles to manage, but a compromised component can't borrow another's permissions.
+- **Canary via Argo Rollouts, 2 replicas** - traffic shifts 25% → 50% → 100% with pauses in between, so a bad deploy gets caught before it's fully live. With only 2 pods the percentages are coarse; real granularity needs more replicas (and an HPA, which isn't wired up yet).
+- **GitOps, not direct** `kubectl apply` - CI only ever updates the `documind-gitops` repo; ArgoCD applies it. Slower than a direct deploy, but one auditable source of truth, and the cluster self-heals if anyone edits it by hand.
+- **Secrets in AWS Secrets Manager via External Secrets** - nothing sensitive lives in git. Tradeoff: if the `ExternalSecret` or its IAM role is misconfigured, the pod has *no* secret and fails to start, rather than quietly running on a stale one.
+- **Migrations run by hand (**`psql`**)** - no automated migration job yet. Fine for now; a real gap versus a proper CI/CD migration step.
+- **Kyverno in Audit mode** - policies report violations without blocking anything. Safer to roll out this way, but nothing's actually enforced yet.
+- **Agent is read-only** - RBAC only allows `get`/`list` on pods and logs, nothing else. Zero blast radius if it misbehaves, but it can only diagnose, never fix - a human still acts on what it finds.
+- **AWS Load Balancer Controller, not the legacy in-tree provisioner** - needed for the NLB + TLS setup to work correctly on EKS. One more controller and IAM role to run, but it's the path that actually works.
+
+
+
 ## Architecture
 
-See `[ARCHITECTURE.md](./ARCHITECTURE.md)` for the full diagram and component
-breakdown.
+See the architecture diagram below for the full component breakdown and data flow.
 
 ## Local setup / running this yourself
 
-See `[WALKTHROUGH.md](./WALKTHROUGH.md)` for the full build order, including
-the exact sequence infrastructure gets applied in and known gotchas encountered
-along the way (kept in, deliberately, as a real record of the debugging that
-went into this).
+See [Walkthrough.md](./Walkthrough.md) for the full build order, including
+the exact sequence infrastructure gets applied in. Known issues and their
+fixes are kept separately in [GOTCHAS.md](./GOTCHAS.md), and a plain-English
+walkthrough of how the whole system fits together lives in [NOTES.md](./NOTES.md).

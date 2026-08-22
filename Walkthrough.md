@@ -2,7 +2,7 @@
 
 A step-by-step build order for standing up DocuMind end to end. For the
 debugging history and known gotchas behind specific steps, see
-[`GOTCHAS.md`](./GOTCHAS.md) - this doc stays to "what to run, what to
+`[GOTCHAS.md](./GOTCHAS.md)` - this doc stays to "what to run, what to
 expect."
 
 ---
@@ -27,18 +27,21 @@ CI/CD, and a standalone AI diagnostic agent.
 
 **Architecture diagram:**
 
-`[SCREENSHOT - architecture diagram]`
+![Architecture diagram](./architecture.gif)
+
 
 ---
+
+
 
 ## Prerequisites
 
 - AWS account with a dedicated IAM user (`documind-deployer`, `AdministratorAccess`
-  for this sandbox account)
+for this sandbox account)
 - Domain you control, able to change nameservers
 - `terraform` >= 1.6, `kubectl`, `helm` >= 3.16, `docker`, `aws` CLI, `pnpm` (via corepack)
 - GitHub repos created: `documind-infra`, `documind-gitops`, `documind-backend`,
-  `documind-frontend`, `documind-agent`
+`documind-frontend`, `documind-agent`
 
 ```bash
 aws configure --profile documind
@@ -47,7 +50,11 @@ aws sts get-caller-identity --profile documind
 
 ---
 
+
+
 ## Phase 1 - Infrastructure (Terraform)
+
+
 
 ### 1a. Remote state bootstrap
 
@@ -56,6 +63,8 @@ cd documind-infra/bootstrap
 terraform init
 terraform apply -var="state_bucket_name=documind-terraform-state-<account-id>"
 ```
+
+
 
 ### 1b. Backend + providers (root module)
 
@@ -90,7 +99,7 @@ terraform apply -target=module.vpc -target=module.eks -target=module.rds \
 ```
 
 - VPC: 2 public + 2 private subnets, NAT Gateway, correctly tagged for EKS
-  (`kubernetes.io/role/elb` / `internal-elb`)
+(`kubernetes.io/role/elb` / `internal-elb`)
 - EKS: separate IAM roles for control plane vs. node group
 - RDS: security group restricted to EKS node SG only, never public
 - S3: private, presigned-URL access only
@@ -101,12 +110,13 @@ aws eks update-kubeconfig --profile documind --region us-east-1 --name documind-
 kubectl get nodes
 ```
 
-`[SCREENSHOT - kubectl get nodes, all Ready]`
-`[SCREENSHOT - terraform apply output / resource count]`
-
 ---
 
+
+
 ## Phase 2 - GitOps (ArgoCD)
+
+
 
 ### 2a. Install ArgoCD + ingress-nginx (via Terraform/Helm)
 
@@ -114,6 +124,8 @@ kubectl get nodes
 terraform apply -target=helm_release.argocd -target=helm_release.ingress_nginx
 kubectl get pods -n argocd -n ingress-nginx
 ```
+
+
 
 ### 2b. `documind-gitops` repo structure
 
@@ -161,8 +173,6 @@ kubectl get application -n argocd
 Hold off on `apps/cluster.yaml` and `apps/agent.yaml` until Phase 9 and
 Phase 11 respectively - see `GOTCHAS.md`.
 
-`[SCREENSHOT - ArgoCD dashboard, Applications Synced/Healthy]`
-`[SCREENSHOT - ArgoCD resource tree for documind-backend]`
 
 ### 2d. Database migrations
 
@@ -192,11 +202,13 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 "
 ```
 
-`[SCREENSHOT - signup working on the live app]`
 
 ---
 
+
+
 ## Phase 3 - CI/CD Pipeline
+
 
 ### 3a. GitHub OIDC provider + role (Terraform)
 
@@ -221,6 +233,8 @@ resource "aws_iam_role" "github_actions" {
   })
 }
 ```
+
+
 
 ### 3b. Workflow (`.github/workflows/deploy.yml`, each app repo)
 
@@ -252,12 +266,13 @@ added as a repo secret.
 
 Push to `main` → build → ECR → gitops patch → ArgoCD sync → Rollout canary.
 
-`[SCREENSHOT - successful GitHub Actions run]`
-`[SCREENSHOT - auto-commit in documind-gitops from CI]`
-
 ---
 
+
+
 ## Phase 4 - DNS + TLS (Route53 + ACM)
+
+
 
 ### 4a. Hosted zone + nameservers
 
@@ -272,6 +287,8 @@ resource "aws_acm_certificate" "app" {
 }
 # + validation record + aws_acm_certificate_validation
 ```
+
+
 
 ### 4c. AWS Load Balancer Controller
 
@@ -304,6 +321,8 @@ set { name = "...aws-load-balancer-ssl-ports"; value = "https" }
 set { name = "controller.service.targetPorts.https"; value = "http" }
 ```
 
+
+
 ### 4d. Point DNS at the NLB
 
 ```bash
@@ -312,12 +331,13 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.
 curl -vI https://documind.qossim005.online/
 ```
 
-`[SCREENSHOT - curl showing HTTP/1.1 200 OK + valid TLS]`
-`[SCREENSHOT - browser padlock / cert details on the live domain]`
-
 ---
 
+
+
 ## Phase 5 - Observability
+
+
 
 ### 5a. Prometheus + Grafana + Alertmanager
 
@@ -327,6 +347,8 @@ resource "helm_release" "kube_prometheus_stack" {
   set { name = "grafana.adminPassword"; value = var.grafana_password }
 }
 ```
+
+
 
 ### 5b. Custom alert rule
 
@@ -352,12 +374,14 @@ spec:
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 ```
 
-`[SCREENSHOT - Grafana dashboard, cluster metrics]`
-`[SCREENSHOT - Alertmanager / PrometheusRule listed]`
 
 ---
 
+
+
 ## Phase 6 - Log Aggregation (Loki + Promtail)
+
+
 
 ### 6a. EBS CSI driver (required first - Loki needs a PVC)
 
@@ -368,6 +392,8 @@ resource "aws_eks_addon" "ebs_csi_driver" {
   service_account_role_arn = module.irsa.ebs_csi_driver_role_arn
 }
 ```
+
+
 
 ### 6b. Loki (single-binary mode) + Promtail
 
@@ -387,11 +413,13 @@ terraform apply
 kubectl get pods -n loki
 ```
 
-`[SCREENSHOT - Grafana Explore, Loki query showing live pod logs]`
-
 ---
 
+
+
 ## Phase 7 - Teardown & Redeployment
+
+
 
 ### Teardown
 
@@ -424,37 +452,27 @@ aws rds describe-db-instances --profile documind --query "DBInstances[].DBInstan
 aws ec2 describe-nat-gateways --profile documind --filter "Name=state,Values=available"
 ```
 
+
+
 ### Redeployment
 
 The real order, not just "re-run the phases" - see `GOTCHAS.md` for why
 each step is ordered this way:
 
 1. Phase 1 (bootstrap → VPC/EKS/RDS/S3/IRSA), then `aws eks
-update-kubeconfig` again.
-2. Apply **all** platform Helm releases together, before any ArgoCD
-   `Application`:
-   ```bash
-   terraform apply \
-     -target=helm_release.ingress_nginx \
-     -target=helm_release.argocd \
-     -target=helm_release.argo_rollouts \
-     -target=helm_release.external_secrets \
-     -target=helm_release.kube_prometheus_stack
-   kubectl apply -f documind-gitops/apps/backend.yaml
-   kubectl apply -f documind-gitops/apps/frontend.yaml
-   ```
-3. Trigger CI/CD on `documind-backend` and `documind-frontend` to
-   populate the (freshly empty) ECR repos:
-   ```bash
-   git commit --allow-empty -m "chore: redeploy" && git push origin main
-   ```
-4. Update `module.dns`'s `ingress_lb_hostname` to the new NLB and
-   `terraform apply -target=module.dns` last.
-5. Continue with Phases 8-11 as written.
 
-`[SCREENSHOT - clean terraform destroy output]`
+update-kubeconfig`again. 2. Apply **all** platform Helm releases together, before any ArgoCD`   Application`:
+
+1. Trigger CI/CD on `documind-backend` and `documind-frontend` to
+  populate the (freshly empty) ECR repos:
+2. Update `module.dns`'s `ingress_lb_hostname` to the new NLB and
+  `terraform apply -target=module.dns` last.
+3. Continue with Phases 8-11 as written.
+
 
 ---
+
+
 
 ## Phase 8 - Progressive Delivery (Argo Rollouts)
 
@@ -483,9 +501,9 @@ spec:
 kubectl get rollout documind-backend -n documind -w
 ```
 
-`[SCREENSHOT - kubectl argo rollouts get rollout, mid-canary]`
-
 ---
+
+
 
 ## Phase 9 - Policy Enforcement (Kyverno)
 
@@ -527,11 +545,13 @@ Once Kyverno's running, sync the cluster-policy ArgoCD app too:
 kubectl apply -f documind-gitops/apps/cluster.yaml
 ```
 
-`[SCREENSHOT - kubectl get clusterpolicy, both Ready]`
-
 ---
 
+
+
 ## Phase 10 - Secrets Migration (External Secrets Operator)
+
+
 
 ### 10a. Install + IRSA role + AWS secret
 
@@ -587,9 +607,9 @@ kubectl get externalsecret -n documind
 kubectl get secret documind-backend-secrets -n documind
 ```
 
-`[SCREENSHOT - ExternalSecret SecretSynced=True]`
-
 ---
+
+
 
 ## Phase 11 - The AI Diagnostic Agent (`documind-agent`)
 
@@ -606,6 +626,8 @@ rules:
     resources: ["pods", "pods/log"]
     verbs: ["get", "list"]
 ```
+
+
 
 ### 11b. Build + deploy (CI, same pattern as backend/frontend)
 
@@ -626,6 +648,8 @@ to `main` to trigger it, then:
 kubectl apply -f apps/agent.yaml
 ```
 
+
+
 ### 11c. Test
 
 ```bash
@@ -633,6 +657,3 @@ kubectl port-forward -n documind svc/documind-agent 3003:3003
 curl -X POST http://localhost:3003/diagnose -H "Content-Type: application/json" \
   -d '{"question": "are all the documind pods healthy right now?"}'
 ```
-
-`[SCREENSHOT - agent diagnosing a real issue]`
-`[SCREENSHOT - kubectl get pods -n documind, agent Running with scoped RBAC]`

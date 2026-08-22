@@ -4,7 +4,3 @@ environment        = "dev"
 vpc_cidr           = "10.0.0.0/16"
 availability_zones = ["us-east-1a", "us-east-1b"]
 db_username        = "documind_admin"
-node_desired_size  = 6
-node_max_size      = 6
-# db_password        = "DocumindDB2026Secure"
-# grafana_password = "documind-grafana-2026"

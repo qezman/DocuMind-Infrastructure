@@ -1,8 +1,6 @@
 # DocuMind - AI Platform on AWS/EKS
 
-DocuMind is a RAG (Retrieval-Augmented Generation) document Q&A application, built
-as a hands-on deep dive into production Kubernetes infrastructure on AWS - mirroring
-a real platform engineering workflow rather than a toy deployment.
+DocuMind is a platform engineering project disguised as a document Q&A app. Under the hood it's a full AWS/EKS stack - Terraform, GitOps, canary rollouts, observability, policy enforcement - built to mirror how a real infra team operates, not just to ship a feature.
 
 The AI application itself (upload a document, ask questions about it) is
 intentionally the *smaller* half of this project. The larger goal was building
@@ -13,13 +11,11 @@ plus a from-scratch agentic AI feature that uses that infrastructure.
 
 ---
 
-
-
 ## Repositories
 
 
-| Repo                                                               | Purpose                                                              |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Repo                                                             | Purpose                                                              |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------- |
 | [documind-infra](https://github.com/qezman/documind-infra)       | Terraform - all AWS infrastructure                                   |
 | [documind-gitops](https://github.com/qezman/documind-gitops)     | Kubernetes manifests + ArgoCD Applications                           |
 | [documind-backend](https://github.com/qezman/documind-backend)   | Fastify API - auth, document upload, RAG chat                        |
@@ -29,11 +25,7 @@ plus a from-scratch agentic AI feature that uses that infrastructure.
 
 ---
 
-
-
 ## What's actually built
-
-
 
 ### Infrastructure (Terraform)
 
@@ -49,8 +41,6 @@ has its own narrowly-scoped IAM role, not a shared one
 provider, required for correct NLB + TLS behavior)
 - EBS CSI driver (with its own IRSA role) - dynamic volume provisioning for
 anything needing persistent storage
-
-
 
 ### Platform layer (Helm, via Terraform)
 
@@ -70,8 +60,6 @@ from Grafana
 and frontend roll out in weighted steps (25% → 50% → 100%) with pauses
 between, so a bad deploy affects a fraction of traffic before going further
 
-
-
 ### CI/CD
 
 - GitHub Actions, authenticated to AWS via OIDC federation - no stored AWS
@@ -81,16 +69,12 @@ to ECR, then commit that new tag into `documind-gitops` - which ArgoCD picks
 up automatically and rolls out via the canary strategy above
 - Full loop: `git push` → built, deployed, and live, with zero manual steps
 
-
-
 ### The AI application
 
 - Document upload → chunking → embedding (Gemini) → stored in `pgvector`
 - Chat interface that retrieves relevant chunks and answers questions grounded
 in the uploaded document
 - JWT-based auth, registration/login
-
-
 
 ### The agentic feature - `documind-agent`
 
@@ -108,8 +92,6 @@ See [documind-agent's README](https://github.com/qezman/documind-agent) and
 
 ---
 
-
-
 ## Design Decisions & Tradeoffs
 
 - **Loki, single-binary mode** - one pod, one PVC, simple to run. At real log volume you'd move to distributed mode with S3-backed storage instead.
@@ -121,8 +103,6 @@ See [documind-agent's README](https://github.com/qezman/documind-agent) and
 - **Kyverno in Audit mode** - policies report violations without blocking anything. Safer to roll out this way, but nothing's actually enforced yet.
 - **Agent is read-only** - RBAC only allows `get`/`list` on pods and logs, nothing else. Zero blast radius if it misbehaves, but it can only diagnose, never fix - a human still acts on what it finds.
 - **AWS Load Balancer Controller, not the legacy in-tree provisioner** - needed for the NLB + TLS setup to work correctly on EKS. One more controller and IAM role to run, but it's the path that actually works.
-
-
 
 ## Architecture
 

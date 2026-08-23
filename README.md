@@ -116,6 +116,6 @@ Full setup guide, architecture decisions, and redeployment walkthrough:
 
 [AI Platform on AWS/EKS](https://app.notion.com/p/DocuMind-EKS-Platform-Walkthrough-3bb604d0a689801db9e4fb5e0b1f77c7)
 
-Alternative, see [Walkthrough.md](./Walkthrough.md) for the full build order, including
+Alternatively, see [Walkthrough.md](./Walkthrough.md) for the full build order, including
 the exact sequence infrastructure gets applied in. Known issues and their
 fixes are kept separately in [GOTCHAS.md](./GOTCHAS.md).

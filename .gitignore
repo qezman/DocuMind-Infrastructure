@@ -6,3 +6,4 @@ crash.log
 .terraform.lock.hcl
 
 NOTES.md
+GOTCHAS.md
